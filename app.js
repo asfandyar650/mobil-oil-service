@@ -1558,22 +1558,50 @@ async function deleteOilItem(id, name) {
 }
 
 // ============================================================================
-// Navigation & Modal Helpers
+// Navigation & Modal Helpers (Desktop & Mobile Drawer / Bottom Nav)
 // ============================================================================
 function switchView(viewName) {
   document.querySelectorAll(".view-container").forEach(el => el.classList.remove("active"));
+  
+  // Sync desktop/tablet sidebar links
   document.querySelectorAll(".nav-link").forEach(link => {
     link.classList.toggle("active", link.dataset.view === viewName);
   });
 
+  // Sync mobile bottom navigation items
+  document.querySelectorAll(".bottom-nav-item").forEach(item => {
+    item.classList.toggle("active", item.dataset.view === viewName);
+  });
+
   const targetView = document.getElementById(`view-${viewName}`);
   if (targetView) targetView.classList.add("active");
+
+  // Close mobile drawer on navigation
+  closeMobileDrawer();
+
+  // Scroll content to top
+  const contentBody = document.querySelector(".content-body");
+  if (contentBody) contentBody.scrollTop = 0;
 
   if (viewName === "profit-analytics") {
     loadProfitAnalytics();
   } else if (viewName === "oil-analytics") {
     loadOilAnalytics();
   }
+}
+
+function openMobileDrawer() {
+  const sidebar = document.querySelector(".sidebar");
+  const backdrop = document.getElementById("sidebarBackdrop");
+  if (sidebar) sidebar.classList.add("open");
+  if (backdrop) backdrop.classList.add("active");
+}
+
+function closeMobileDrawer() {
+  const sidebar = document.querySelector(".sidebar");
+  const backdrop = document.getElementById("sidebarBackdrop");
+  if (sidebar) sidebar.classList.remove("open");
+  if (backdrop) backdrop.classList.remove("active");
 }
 
 function openModal(id) {
@@ -1600,6 +1628,53 @@ function setupNavigation() {
   window.setProfitChartTab = setProfitChartTab;
   window.openEditOilModal = openEditOilModal;
   window.deleteOilItem = deleteOilItem;
+  window.openMobileDrawer = openMobileDrawer;
+  window.closeMobileDrawer = closeMobileDrawer;
+
+  // Mobile Hamburger Toggle
+  const toggleBtn = document.getElementById("mobileMenuToggle");
+  if (toggleBtn) {
+    toggleBtn.addEventListener("click", () => {
+      const sidebar = document.querySelector(".sidebar");
+      if (sidebar && sidebar.classList.contains("open")) {
+        closeMobileDrawer();
+      } else {
+        openMobileDrawer();
+      }
+    });
+  }
+
+  // Mobile Bottom Nav "More" Button
+  const moreBtn = document.getElementById("bottomNavMoreBtn");
+  if (moreBtn) {
+    moreBtn.addEventListener("click", () => {
+      openMobileDrawer();
+    });
+  }
+
+  // Backdrop click to close drawer
+  const backdrop = document.getElementById("sidebarBackdrop");
+  if (backdrop) {
+    backdrop.addEventListener("click", () => {
+      closeMobileDrawer();
+    });
+  }
+
+  // Hook up mobile bottom nav item clicks
+  document.querySelectorAll(".bottom-nav-item[data-view]").forEach(item => {
+    item.addEventListener("click", (e) => {
+      e.preventDefault();
+      switchView(item.dataset.view);
+    });
+  });
+
+  // Swipe or escape key to close drawer
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeMobileDrawer();
+      document.querySelectorAll(".modal-overlay.active").forEach(m => m.classList.remove("active"));
+    }
+  });
 }
 
 function setupTheme() {
