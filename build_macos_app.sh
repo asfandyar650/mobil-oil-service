@@ -24,6 +24,7 @@ cp app.py "${BUNDLE_DIR}/Contents/Resources/app.py"
 cp index.html "${BUNDLE_DIR}/Contents/Resources/index.html"
 cp styles.css "${BUNDLE_DIR}/Contents/Resources/styles.css"
 cp app.js "${BUNDLE_DIR}/Contents/Resources/app.js"
+cp chart.min.js "${BUNDLE_DIR}/Contents/Resources/chart.min.js"
 cp oil_service.db "${BUNDLE_DIR}/Contents/Resources/oil_service.db"
 
 # 5. Create PkgInfo

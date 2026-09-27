@@ -401,6 +401,80 @@ def get_profit_analytics(conn):
         "min_profit_guarantee": 300.0
     }
 
+def get_profit_range(conn, query):
+    start = query.get("start", ["2000-01-01"])[0]
+    end = query.get("end", ["2099-12-31"])[0]
+
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT s.*, c.name as customer_name, c.phone as customer_phone, v.plate_number
+    FROM services s
+    LEFT JOIN customers c ON s.customer_id = c.id
+    LEFT JOIN vehicles v ON s.vehicle_id = v.id
+    WHERE s.service_date >= ? AND s.service_date <= ?
+    ORDER BY s.service_date DESC, s.id DESC
+    """, (start, end))
+    services = [dict(r) for r in cursor.fetchall()]
+
+    cursor.execute("SELECT brand, viscosity, cost_per_liter FROM inventory")
+    inv_map = {(r["brand"], r["viscosity"]): float(r["cost_per_liter"]) for r in cursor.fetchall()}
+
+    range_revenue = 0.0
+    range_oil_cost = 0.0
+    range_profit = 0.0
+    range_liters = 0.0
+    first_changes = 0
+
+    txs = []
+    for s in services:
+        tot = float(s["total_amount"])
+        lit = float(s["liters"])
+        brand = s["oil_brand"]
+        visc = s["oil_viscosity"]
+        cost_per_lit = inv_map.get((brand, visc), 2500.0)
+        oil_cost = cost_per_lit * lit
+
+        raw_profit = tot - oil_cost
+        profit = max(300.0, raw_profit)
+
+        range_revenue += tot
+        range_oil_cost += oil_cost
+        range_profit += profit
+        range_liters += lit
+        if s.get("is_first_service"):
+            first_changes += 1
+
+        txs.append({
+            "id": s["id"],
+            "date": s["service_date"],
+            "plate": s["plate_number"] or "N/A",
+            "customer": s["customer_name"] or "Walk-in",
+            "phone": s["customer_phone"] or "",
+            "oil": f"{brand} {visc} ({lit}L)",
+            "total": tot,
+            "oil_cost": round(oil_cost),
+            "profit": round(profit),
+            "is_min_floor": raw_profit < 300.0
+        })
+
+    s_count = len(services)
+    avg_profit = round(range_profit / s_count) if s_count > 0 else 0
+    margin_pct = round((range_profit / range_revenue) * 100) if range_revenue > 0 else 0
+
+    return {
+        "start": start,
+        "end": end,
+        "services_count": s_count,
+        "first_changes": first_changes,
+        "total_revenue": round(range_revenue),
+        "total_oil_cost": round(range_oil_cost),
+        "total_profit": round(range_profit),
+        "total_liters": round(range_liters, 1),
+        "avg_profit_per_service": avg_profit,
+        "margin_pct": margin_pct,
+        "transactions": txs
+    }
+
 def get_oil_analytics(conn):
     cursor = conn.cursor()
     cursor.execute("""
@@ -719,6 +793,9 @@ class RequestHandler(SimpleHTTPRequestHandler):
             elif path == "/api/profit-analytics":
                 self.send_json(get_profit_analytics(conn))
 
+            elif path == "/api/profit-range":
+                self.send_json(get_profit_range(conn, query))
+
             elif path == "/api/oil-analytics":
                 self.send_json(get_oil_analytics(conn))
 
@@ -977,6 +1054,8 @@ class RequestHandler(SimpleHTTPRequestHandler):
         try:
             if path.startswith("/api/customers/"):
                 cust_id = int(path.split("/")[-1])
+                cursor.execute("DELETE FROM services WHERE customer_id = ?", (cust_id,))
+                cursor.execute("DELETE FROM vehicles WHERE customer_id = ?", (cust_id,))
                 cursor.execute("DELETE FROM customers WHERE id = ?", (cust_id,))
                 conn.commit()
                 self.send_json({"success": True})

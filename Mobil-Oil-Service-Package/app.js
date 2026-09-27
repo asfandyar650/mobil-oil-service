@@ -125,6 +125,27 @@ async function api(path, options = {}) {
   return localApiSimulation(path, options);
 }
 
+function computeServiceProfitClient(s, invs) {
+  const brand = s.oil_brand || "";
+  const visc = s.oil_viscosity || "";
+  const liters = parseFloat(s.liters || 0);
+  const total = parseFloat(s.total_amount || 0);
+
+  const matched = (invs || []).find(i => i.brand === brand && i.viscosity === visc) ||
+                  (invs || []).find(i => i.brand === brand) ||
+                  (invs || [])[0];
+  const costPerLiter = matched ? parseFloat(matched.cost_per_liter || 0) : 2500;
+  const oilCost = costPerLiter * liters;
+
+  const rawProfit = total - oilCost;
+  const enforcedProfit = Math.max(300, rawProfit);
+  return {
+    oilCost: Math.round(oilCost),
+    profit: Math.round(enforcedProfit),
+    isMinFloor: rawProfit < 300
+  };
+}
+
 function localApiSimulation(path, options) {
   const method = options.method || "GET";
   const data = options.body ? JSON.parse(options.body) : {};
@@ -217,6 +238,13 @@ function localApiSimulation(path, options) {
 
   if (path.startsWith("/api/customers/")) {
     const id = parseInt(path.split("/").pop());
+    if (method === "DELETE") {
+      custs = custs.filter(c => c.id !== id);
+      vehts = vehts.filter(v => v.customer_id !== id);
+      localStorage.setItem("mobil_customers", JSON.stringify(custs));
+      localStorage.setItem("mobil_vehicles", JSON.stringify(vehts));
+      return { success: true };
+    }
     const cust = custs.find(c => c.id === id);
     if (!cust) return { error: "Customer not found" };
     const myVehs = vehts.filter(v => v.customer_id === id);
@@ -309,6 +337,15 @@ function localApiSimulation(path, options) {
     });
   }
 
+  if (path.startsWith("/api/services/")) {
+    const id = parseInt(path.split("/").pop());
+    if (method === "DELETE") {
+      servs = servs.filter(s => s.id !== id);
+      localStorage.setItem("mobil_services", JSON.stringify(servs));
+      return { success: true };
+    }
+  }
+
   if (path === "/api/overdue") {
     const today = new Date().toISOString().split("T")[0];
     const overdueList = [];
@@ -367,6 +404,265 @@ function localApiSimulation(path, options) {
       localStorage.setItem("mobil_inventory", JSON.stringify(invs));
       return { success: true };
     }
+  }
+
+  // --- Offline Simulation for Profit Analytics ---
+  if (path === "/api/profit-analytics") {
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0];
+    
+    const yDate = new Date(today);
+    yDate.setDate(yDate.getDate() - 1);
+    const yesterdayStr = yDate.toISOString().split("T")[0];
+
+    const weekAgo = new Date(today);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const weekAgoStr = weekAgo.toISOString().split("T")[0];
+
+    const twoWeeksAgo = new Date(today);
+    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+    const twoWeeksAgoStr = twoWeeksAgo.toISOString().split("T")[0];
+
+    const monthAgo = new Date(today);
+    monthAgo.setMonth(monthAgo.getMonth() - 1);
+    const monthAgoStr = monthAgo.toISOString().split("T")[0];
+
+    const twoMonthsAgo = new Date(today);
+    twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+    const twoMonthsAgoStr = twoMonthsAgo.toISOString().split("T")[0];
+
+    const yearAgo = new Date(today);
+    yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+    const yearAgoStr = yearAgo.toISOString().split("T")[0];
+
+    const twoYearsAgo = new Date(today);
+    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+    const twoYearsAgoStr = twoYearsAgo.toISOString().split("T")[0];
+
+    let today_profit = 0, today_revenue = 0;
+    let yesterday_profit = 0, yesterday_revenue = 0;
+    let this_week_profit = 0, this_week_revenue = 0;
+    let last_week_profit = 0, last_week_revenue = 0;
+    let this_month_profit = 0, this_month_revenue = 0;
+    let last_month_profit = 0, last_month_revenue = 0;
+    let this_year_profit = 0, this_year_revenue = 0;
+    let last_year_profit = 0, last_year_revenue = 0;
+
+    // Daily map (14 days)
+    const daily_map = {};
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const ds = d.toISOString().split("T")[0];
+      daily_map[ds] = { date: ds, revenue: 0, profit: 0, services: 0 };
+    }
+
+    // Monthly map (12 months)
+    const monthly_map = {};
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(today);
+      d.setMonth(d.getMonth() - i);
+      const ms = d.toISOString().substring(0, 7);
+      monthly_map[ms] = { month: ms, revenue: 0, profit: 0, services: 0 };
+    }
+
+    servs.forEach(s => {
+      const sDate = s.service_date ? s.service_date.substring(0, 10) : "";
+      const rev = parseFloat(s.total_amount || 0);
+      const { profit } = computeServiceProfitClient(s, invs);
+
+      if (sDate === todayStr) {
+        today_profit += profit;
+        today_revenue += rev;
+      } else if (sDate === yesterdayStr) {
+        yesterday_profit += profit;
+        yesterday_revenue += rev;
+      }
+
+      if (sDate >= weekAgoStr) {
+        this_week_profit += profit;
+        this_week_revenue += rev;
+      } else if (sDate >= twoWeeksAgoStr) {
+        last_week_profit += profit;
+        last_week_revenue += rev;
+      }
+
+      if (sDate >= monthAgoStr) {
+        this_month_profit += profit;
+        this_month_revenue += rev;
+      } else if (sDate >= twoMonthsAgoStr) {
+        last_month_profit += profit;
+        last_month_revenue += rev;
+      }
+
+      if (sDate >= yearAgoStr) {
+        this_year_profit += profit;
+        this_year_revenue += rev;
+      } else if (sDate >= twoYearsAgoStr) {
+        last_year_profit += profit;
+        last_year_revenue += rev;
+      }
+
+      if (daily_map[sDate]) {
+        daily_map[sDate].revenue += rev;
+        daily_map[sDate].profit += profit;
+        daily_map[sDate].services += 1;
+      }
+
+      const sMonth = sDate.substring(0, 7);
+      if (monthly_map[sMonth]) {
+        monthly_map[sMonth].revenue += rev;
+        monthly_map[sMonth].profit += profit;
+        monthly_map[sMonth].services += 1;
+      }
+    });
+
+    const diffPct = (cur, prev) => prev > 0 ? Math.round(((cur - prev) / prev) * 100) : (cur > 0 ? 100 : 0);
+
+    return {
+      today_profit: Math.round(today_profit),
+      today_revenue: Math.round(today_revenue),
+      yesterday_profit: Math.round(yesterday_profit),
+      yesterday_revenue: Math.round(yesterday_revenue),
+      yesterday_diff: Math.round(today_profit - yesterday_profit),
+      yesterday_pct: diffPct(today_profit, yesterday_profit),
+
+      this_week_profit: Math.round(this_week_profit),
+      this_week_revenue: Math.round(this_week_revenue),
+      last_week_profit: Math.round(last_week_profit),
+      last_week_revenue: Math.round(last_week_revenue),
+      week_diff: Math.round(this_week_profit - last_week_profit),
+      week_pct: diffPct(this_week_profit, last_week_profit),
+
+      this_month_profit: Math.round(this_month_profit),
+      this_month_revenue: Math.round(this_month_revenue),
+      last_month_profit: Math.round(last_month_profit),
+      last_month_revenue: Math.round(last_month_revenue),
+      month_diff: Math.round(this_month_profit - last_month_profit),
+      month_pct: diffPct(this_month_profit, last_month_profit),
+
+      this_year_profit: Math.round(this_year_profit),
+      this_year_revenue: Math.round(this_year_revenue),
+      last_year_profit: Math.round(last_year_profit),
+      last_year_revenue: Math.round(last_year_revenue),
+      year_diff: Math.round(this_year_profit - last_year_profit),
+      year_pct: diffPct(this_year_profit, last_year_profit),
+
+      daily_trend: Object.values(daily_map),
+      monthly_trend: Object.values(monthly_map),
+      min_profit_guarantee: 300.0
+    };
+  }
+
+  // --- Offline Simulation for Oil Trends Analytics ---
+  if (path === "/api/oil-analytics") {
+    let total_liters = 0;
+    const brandMap = {};
+    const viscMap = {};
+    const typeMap = {};
+
+    servs.forEach(s => {
+      const b = s.oil_brand || "Other";
+      const v = s.oil_viscosity || "Unknown";
+      const t = s.oil_type || "Fully Synthetic";
+      const l = parseFloat(s.liters || 0);
+      const r = parseFloat(s.total_amount || 0);
+
+      total_liters += l;
+
+      if (!brandMap[b]) brandMap[b] = { oil_brand: b, total_liters: 0, total_services: 0, total_revenue: 0 };
+      brandMap[b].total_liters += l;
+      brandMap[b].total_services += 1;
+      brandMap[b].total_revenue += r;
+
+      if (!viscMap[v]) viscMap[v] = { oil_viscosity: v, total_liters: 0, total_services: 0 };
+      viscMap[v].total_liters += l;
+      viscMap[v].total_services += 1;
+
+      if (!typeMap[t]) typeMap[t] = { oil_type: t, total_liters: 0, total_services: 0 };
+      typeMap[t].total_liters += l;
+      typeMap[t].total_services += 1;
+    });
+
+    const brands = Object.values(brandMap).sort((a, b) => b.total_liters - a.total_liters);
+    const viscosities = Object.values(viscMap).sort((a, b) => b.total_liters - a.total_liters);
+    const types = Object.values(typeMap).sort((a, b) => b.total_liters - a.total_liters);
+
+    brands.forEach(b => b.share_pct = total_liters > 0 ? Math.round((b.total_liters / total_liters) * 100) : 0);
+    viscosities.forEach(v => v.share_pct = total_liters > 0 ? Math.round((v.total_liters / total_liters) * 100) : 0);
+    types.forEach(t => t.share_pct = total_liters > 0 ? Math.round((t.total_liters / total_liters) * 100) : 0);
+
+    return {
+      total_liters: Math.round(total_liters * 10) / 10,
+      total_services: servs.length,
+      top_selling_brand: brands[0] ? brands[0].oil_brand : "Mobil 1",
+      top_selling_viscosity: viscosities[0] ? viscosities[0].oil_viscosity : "5W-30",
+      by_brand: brands,
+      by_viscosity: viscosities,
+      by_type: types
+    };
+  }
+
+  // --- Offline Simulation for Calendar Profit Range ---
+  if (path.startsWith("/api/profit-range")) {
+    const qIdx = path.indexOf("?");
+    const params = new URLSearchParams(qIdx !== -1 ? path.substring(qIdx) : "");
+    const start = params.get("start") || "2000-01-01";
+    const end = params.get("end") || "2099-12-31";
+
+    const filtered = servs.filter(s => {
+      const d = s.service_date ? s.service_date.substring(0, 10) : "";
+      return d >= start && d <= end;
+    });
+
+    let range_revenue = 0;
+    let range_oil_cost = 0;
+    let range_profit = 0;
+    let range_liters = 0;
+    let first_changes = 0;
+
+    const txs = filtered.map(s => {
+      const rev = parseFloat(s.total_amount || 0);
+      const lit = parseFloat(s.liters || 0);
+      const { oilCost, profit, isMinFloor } = computeServiceProfitClient(s, invs);
+
+      range_revenue += rev;
+      range_oil_cost += oilCost;
+      range_profit += profit;
+      range_liters += lit;
+      if (s.is_first_service) first_changes++;
+
+      const c = custs.find(cu => cu.id === s.customer_id) || {};
+      const v = vehts.find(ve => ve.id === s.vehicle_id) || {};
+
+      return {
+        id: s.id,
+        date: s.service_date,
+        plate: v.plate_number || s.plate_number || "N/A",
+        customer: c.name || s.customer_name || "Walk-in",
+        phone: c.phone || s.customer_phone || "",
+        oil: `${s.oil_brand} ${s.oil_viscosity} (${lit}L)`,
+        total: rev,
+        oil_cost: oilCost,
+        profit: profit,
+        is_min_floor: isMinFloor
+      };
+    });
+
+    const sCount = filtered.length;
+    return {
+      start,
+      end,
+      services_count: sCount,
+      first_changes: first_changes,
+      total_revenue: Math.round(range_revenue),
+      total_oil_cost: Math.round(range_oil_cost),
+      total_profit: Math.round(range_profit),
+      total_liters: Math.round(range_liters * 10) / 10,
+      avg_profit_per_service: sCount > 0 ? Math.round(range_profit / sCount) : 0,
+      margin_pct: range_revenue > 0 ? Math.round((range_profit / range_revenue) * 100) : 0,
+      transactions: txs
+    };
   }
 
   return [];
@@ -473,6 +769,9 @@ function renderRecentServices(services) {
           <button class="btn btn-whatsapp btn-sm" onclick="sendWhatsAppReminder('${s.customer_phone}', '${s.customer_name}', '${s.plate_number}', '${s.odometer}', '${s.next_service_odometer}')" title="Send WhatsApp">
             <i class="fa-brands fa-whatsapp"></i>
           </button>
+          <button class="btn btn-secondary btn-sm" onclick="deleteServiceItem(${s.id}, '${escapeHtml(s.plate_number)}')" title="Delete Service Record" style="color:var(--danger);">
+            <i class="fa-solid fa-trash"></i>
+          </button>
         </div>
       </td>
     </tr>
@@ -509,9 +808,14 @@ function renderCustomers(customers) {
       <td><strong>${c.total_services || 0}</strong> visits</td>
       <td><small style="color:var(--text-muted);">${escapeHtml(c.address || "N/A")}</small></td>
       <td>
-        <button class="btn btn-secondary btn-sm" onclick="openCustomerDetails(${c.id})">
-          <i class="fa-solid fa-eye"></i> View Profile & History
-        </button>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-secondary btn-sm" onclick="openCustomerDetails(${c.id})" title="View Profile & History">
+            <i class="fa-solid fa-eye"></i> Profile
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="deleteCustomerItem(${c.id}, '${escapeHtml(c.name)}')" title="Delete Customer" style="color:var(--danger);">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </div>
       </td>
     </tr>
   `).join("");
@@ -573,6 +877,9 @@ function renderServicesHistory(services) {
           </button>
           <button class="btn btn-secondary btn-sm" onclick="showStickerModal(${s.id})" title="Print Windshield Sticker">
             <i class="fa-solid fa-note-sticky"></i>
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="deleteServiceItem(${s.id}, '${escapeHtml(s.plate_number)}')" title="Delete Service Record" style="color:var(--danger);">
+            <i class="fa-solid fa-trash"></i>
           </button>
         </div>
       </td>
@@ -801,33 +1108,79 @@ function setupEventListeners() {
     openModal("modalAddCustomer");
   });
 
-  // Global Search
+  // Global Search Input, Clear Button, Submit Button & Dropdown
   const searchInput = document.getElementById("globalSearchInput");
-  searchInput.addEventListener("input", () => {
-    const q = searchInput.value.toLowerCase().trim();
-    if (!q) {
-      renderCustomers(state.customers);
-      renderServicesHistory(state.services);
-      return;
+  const clearBtn = document.getElementById("btnClearSearch");
+  const searchSubmitBtn = document.getElementById("btnGlobalSearch");
+  const searchIconBtn = document.getElementById("searchIconBtn");
+
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      const q = searchInput.value.trim();
+      if (clearBtn) clearBtn.style.display = q ? "block" : "none";
+      if (!q) {
+        hideSearchDropdown();
+        renderCustomers(state.customers);
+        renderServicesHistory(state.services);
+        return;
+      }
+      renderSearchResultsDropdown(q.toLowerCase());
+    });
+
+    searchInput.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        executeGlobalSearch();
+      } else if (e.key === "Escape") {
+        hideSearchDropdown();
+      }
+    });
+
+    searchInput.addEventListener("focus", () => {
+      const q = searchInput.value.trim();
+      if (q) renderSearchResultsDropdown(q.toLowerCase());
+    });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      clearGlobalSearch();
+    });
+  }
+
+  if (searchSubmitBtn) {
+    searchSubmitBtn.addEventListener("click", () => {
+      executeGlobalSearch();
+    });
+  }
+
+  if (searchIconBtn) {
+    searchIconBtn.addEventListener("click", () => {
+      executeGlobalSearch();
+    });
+  }
+
+  // Close search dropdown on click outside
+  document.addEventListener("click", e => {
+    const searchBox = document.querySelector(".search-box");
+    if (searchBox && !searchBox.contains(e.target)) {
+      hideSearchDropdown();
     }
-
-    // Filter customers
-    const filteredCusts = state.customers.filter(c => 
-      c.name.toLowerCase().includes(q) || 
-      c.phone.includes(q) || 
-      (c.plates && c.plates.toLowerCase().includes(q))
-    );
-    renderCustomers(filteredCusts);
-
-    // Filter services
-    const filteredServices = state.services.filter(s =>
-      s.plate_number.toLowerCase().includes(q) ||
-      s.customer_name.toLowerCase().includes(q) ||
-      s.customer_phone.includes(q) ||
-      s.oil_brand.toLowerCase().includes(q)
-    );
-    renderServicesHistory(filteredServices);
   });
+
+  // Modal Edit Oil: Delete Oil Button
+  const btnModalDeleteOil = document.getElementById("btnModalDeleteOil");
+  if (btnModalDeleteOil) {
+    btnModalDeleteOil.addEventListener("click", async () => {
+      const id = parseInt(document.getElementById("editInvId").value);
+      const brand = document.getElementById("editInvBrand").value;
+      const visc = document.getElementById("editInvViscosity").value;
+      if (id) {
+        closeModal("modalEditOil");
+        await deleteOilItem(id, `${brand} ${visc}`);
+      }
+    });
+  }
 
   // Service Log Local Filter
   const srvFilterInput = document.getElementById("serviceFilterInput");
@@ -1300,6 +1653,7 @@ async function loadProfitAnalytics() {
   `;
 
   renderProfitChart();
+  await loadProfitRangeOnDemand();
 }
 
 function setProfitChartTab(tab) {
@@ -1511,7 +1865,7 @@ function renderOilLeaderboard(brandList) {
           <strong style="color:var(--text-main); font-size:14px;">${escapeHtml(b.oil_brand)}</strong>
         </td>
         <td><strong style="color:var(--primary); font-size:14.5px;">${b.total_liters} Liters</strong></td>
-        <td>${b.service_count} cars</td>
+        <td>${b.service_count || b.total_services || 0} cars</td>
         <td><strong>${Number(b.total_revenue || 0).toLocaleString()} ${state.settings.currency}</strong></td>
         <td style="min-width: 170px;">
           <div style="display:flex; align-items:center; gap:8px;">
@@ -1554,6 +1908,332 @@ async function deleteOilItem(id, name) {
     await loadOilAnalytics();
     await loadProfitAnalytics();
     alert("Oil product removed from inventory.");
+  }
+}
+
+// ============================================================================
+// Delete Operations (Services & Customers)
+// ============================================================================
+async function deleteServiceItem(id, plate) {
+  if (!confirm(`Are you sure you want to delete service record #${id} for vehicle "${plate}"?\n\nThis will remove the log and automatically recalculate profits, revenues, and oil sales.`)) return;
+
+  const res = await api(`/api/services/${id}`, { method: "DELETE" });
+  if (res && res.success) {
+    await loadServices();
+    await loadDashboard();
+    await loadProfitAnalytics();
+    await loadOilAnalytics();
+    alert(`Service record #${id} deleted successfully.`);
+  }
+}
+
+async function deleteCustomerItem(id, name) {
+  if (!confirm(`Are you sure you want to delete customer "${name}"?\n\nWarning: This will permanently remove their registered vehicle records and all service history!`)) return;
+
+  const res = await api(`/api/customers/${id}`, { method: "DELETE" });
+  if (res && res.success) {
+    await loadCustomers();
+    await loadVehiclesDropdown();
+    await loadServices();
+    await loadDashboard();
+    await loadProfitAnalytics();
+    await loadOilAnalytics();
+    alert(`Customer "${name}" and all associated records deleted.`);
+  }
+}
+
+// ============================================================================
+// Global Search Controller & Instant Dropdown
+// ============================================================================
+function executeGlobalSearch() {
+  const searchInput = document.getElementById("globalSearchInput");
+  const q = searchInput ? searchInput.value.toLowerCase().trim() : "";
+  if (!q) {
+    clearGlobalSearch();
+    return;
+  }
+
+  // Filter customers table
+  const filteredCusts = state.customers.filter(c => 
+    c.name.toLowerCase().includes(q) || 
+    c.phone.includes(q) || 
+    (c.plates && c.plates.toLowerCase().includes(q))
+  );
+  renderCustomers(filteredCusts);
+
+  // Filter services table
+  const filteredServices = state.services.filter(s =>
+    (s.plate_number && s.plate_number.toLowerCase().includes(q)) ||
+    (s.customer_name && s.customer_name.toLowerCase().includes(q)) ||
+    (s.customer_phone && s.customer_phone.includes(q)) ||
+    (s.oil_brand && s.oil_brand.toLowerCase().includes(q))
+  );
+  renderServicesHistory(filteredServices);
+
+  // Render instant dropdown
+  renderSearchResultsDropdown(q);
+}
+
+function clearGlobalSearch() {
+  const searchInput = document.getElementById("globalSearchInput");
+  const clearBtn = document.getElementById("btnClearSearch");
+  if (searchInput) searchInput.value = "";
+  if (clearBtn) clearBtn.style.display = "none";
+  hideSearchDropdown();
+  renderCustomers(state.customers);
+  renderServicesHistory(state.services);
+}
+
+function hideSearchDropdown() {
+  const dropdown = document.getElementById("searchResultsDropdown");
+  if (dropdown) dropdown.style.display = "none";
+}
+
+function renderSearchResultsDropdown(q) {
+  const dropdown = document.getElementById("searchResultsDropdown");
+  if (!dropdown) return;
+
+  if (!q) {
+    dropdown.style.display = "none";
+    return;
+  }
+
+  const matchingCusts = state.customers.filter(c =>
+    c.name.toLowerCase().includes(q) ||
+    c.phone.includes(q) ||
+    (c.plates && c.plates.toLowerCase().includes(q))
+  ).slice(0, 4);
+
+  const matchingVehs = (state.vehicles || []).filter(v =>
+    (v.plate_number && v.plate_number.toLowerCase().includes(q)) ||
+    (v.make && v.make.toLowerCase().includes(q)) ||
+    (v.model && v.model.toLowerCase().includes(q))
+  ).slice(0, 4);
+
+  const matchingServs = (state.services || []).filter(s =>
+    (s.plate_number && s.plate_number.toLowerCase().includes(q)) ||
+    (s.customer_name && s.customer_name.toLowerCase().includes(q)) ||
+    (s.oil_brand && s.oil_brand.toLowerCase().includes(q))
+  ).slice(0, 4);
+
+  if (matchingCusts.length === 0 && matchingVehs.length === 0 && matchingServs.length === 0) {
+    dropdown.innerHTML = `<div style="padding:14px; text-align:center; color:var(--text-muted); font-size:13px;">No results found for "${escapeHtml(q)}"</div>`;
+    dropdown.style.display = "block";
+    return;
+  }
+
+  let html = "";
+
+  if (matchingCusts.length > 0) {
+    html += `<div class="search-results-header"><i class="fa-solid fa-users"></i> Customers</div>`;
+    matchingCusts.forEach(c => {
+      html += `
+        <div class="search-result-item" onclick="openCustomerDetails(${c.id}); hideSearchDropdown();">
+          <div>
+            <div class="search-result-title">${escapeHtml(c.name)}</div>
+            <div class="search-result-sub"><i class="fa-solid fa-phone"></i> ${escapeHtml(c.phone)} | ${escapeHtml(c.plates || "No vehicle")}</div>
+          </div>
+          <span class="badge badge-accent">Customer</span>
+        </div>
+      `;
+    });
+  }
+
+  if (matchingVehs.length > 0) {
+    html += `<div class="search-results-header"><i class="fa-solid fa-car"></i> Vehicles</div>`;
+    matchingVehs.forEach(v => {
+      html += `
+        <div class="search-result-item" onclick="openCustomerDetails(${v.customer_id}); hideSearchDropdown();">
+          <div>
+            <div class="search-result-title"><span class="plate-badge">${escapeHtml(v.plate_number)}</span> ${escapeHtml(v.make)} ${escapeHtml(v.model)}</div>
+            <div class="search-result-sub">Owner: ${escapeHtml(v.customer_name || "")} (${escapeHtml(v.customer_phone || "")})</div>
+          </div>
+          <span class="badge badge-success">Vehicle</span>
+        </div>
+      `;
+    });
+  }
+
+  if (matchingServs.length > 0) {
+    html += `<div class="search-results-header"><i class="fa-solid fa-oil-can"></i> Service Records</div>`;
+    matchingServs.forEach(s => {
+      html += `
+        <div class="search-result-item" onclick="showReceiptModal(${s.id}); hideSearchDropdown();">
+          <div>
+            <div class="search-result-title">Service #${s.id} - ${escapeHtml(s.plate_number)} (${escapeHtml(s.service_date)})</div>
+            <div class="search-result-sub">${escapeHtml(s.oil_brand)} ${escapeHtml(s.oil_viscosity)} | Total: ${Number(s.total_amount).toLocaleString()} ${state.settings.currency}</div>
+          </div>
+          <span class="badge badge-primary">Receipt</span>
+        </div>
+      `;
+    });
+  }
+
+  dropdown.innerHTML = html;
+  dropdown.style.display = "block";
+}
+
+// ============================================================================
+// Calendar Profit & Flexible Date Range Engine (Min. 300 PKR Guaranteed)
+// ============================================================================
+let activeProfitRangeState = {
+  preset: "2days",
+  start: "",
+  end: "",
+  label: "Past 2 Days"
+};
+
+async function selectProfitPreset(preset) {
+  activeProfitRangeState.preset = preset;
+  document.querySelectorAll(".date-preset-btn").forEach(btn => btn.classList.remove("active"));
+
+  const today = new Date();
+  let start = new Date(today);
+  let end = new Date(today);
+  let label = "Past 2 Days";
+
+  if (preset === "today") {
+    label = "Today's";
+    const btn = document.getElementById("presetToday");
+    if (btn) btn.classList.add("active");
+  } else if (preset === "2days") {
+    start.setDate(start.getDate() - 1);
+    label = "Past 2 Days";
+    const btn = document.getElementById("preset2Days");
+    if (btn) btn.classList.add("active");
+  } else if (preset === "7days") {
+    start.setDate(start.getDate() - 6);
+    label = "Past 7 Days";
+    const btn = document.getElementById("preset7Days");
+    if (btn) btn.classList.add("active");
+  } else if (preset === "30days") {
+    start.setDate(start.getDate() - 29);
+    label = "Past 30 Days";
+    const btn = document.getElementById("preset30Days");
+    if (btn) btn.classList.add("active");
+  } else if (preset === "month") {
+    start = new Date(today.getFullYear(), today.getMonth(), 1);
+    label = "This Month's";
+    const btn = document.getElementById("presetMonth");
+    if (btn) btn.classList.add("active");
+  } else if (preset === "year") {
+    start = new Date(today.getFullYear(), 0, 1);
+    label = "This Year's";
+    const btn = document.getElementById("presetYear");
+    if (btn) btn.classList.add("active");
+  } else if (preset === "all") {
+    start = new Date(2020, 0, 1);
+    label = "All Time";
+    const btn = document.getElementById("presetAll");
+    if (btn) btn.classList.add("active");
+  }
+
+  const startStr = start.toISOString().split("T")[0];
+  const endStr = end.toISOString().split("T")[0];
+
+  activeProfitRangeState.start = startStr;
+  activeProfitRangeState.end = endStr;
+  activeProfitRangeState.label = label;
+
+  const inStart = document.getElementById("profitCustomStart");
+  const inEnd = document.getElementById("profitCustomEnd");
+  if (inStart) inStart.value = startStr;
+  if (inEnd) inEnd.value = endStr;
+
+  await fetchAndRenderProfitRange(startStr, endStr, label);
+}
+
+async function applyCustomProfitRange() {
+  const inStart = document.getElementById("profitCustomStart");
+  const inEnd = document.getElementById("profitCustomEnd");
+  if (!inStart || !inEnd || !inStart.value || !inEnd.value) {
+    alert("Please select both a start date and an end date.");
+    return;
+  }
+
+  const startStr = inStart.value;
+  const endStr = inEnd.value;
+  if (startStr > endStr) {
+    alert("Start date cannot be after end date.");
+    return;
+  }
+
+  activeProfitRangeState.preset = "custom";
+  activeProfitRangeState.start = startStr;
+  activeProfitRangeState.end = endStr;
+  activeProfitRangeState.label = `${startStr} to ${endStr}`;
+
+  document.querySelectorAll(".date-preset-btn").forEach(btn => btn.classList.remove("active"));
+  await fetchAndRenderProfitRange(startStr, endStr, activeProfitRangeState.label);
+}
+
+async function loadProfitRangeOnDemand() {
+  if (!activeProfitRangeState.start) {
+    await selectProfitPreset("2days");
+  } else {
+    await fetchAndRenderProfitRange(activeProfitRangeState.start, activeProfitRangeState.end, activeProfitRangeState.label);
+  }
+}
+
+async function fetchAndRenderProfitRange(startStr, endStr, label) {
+  const curr = state.settings.currency || "PKR";
+  const data = await api(`/api/profit-range?start=${startStr}&end=${endStr}`);
+  if (!data) return;
+
+  const lbl = document.getElementById("rangePeriodLabel");
+  if (lbl) lbl.innerText = `${label} Net Profit`;
+
+  const pVal = document.getElementById("rangeProfitVal");
+  if (pVal) pVal.innerText = `${Number(data.total_profit || 0).toLocaleString()} ${curr}`;
+
+  const avgP = document.getElementById("rangeAvgProfit");
+  if (avgP) avgP.innerText = `Avg: ${Number(data.avg_profit_per_service || 0).toLocaleString()} ${curr} / car`;
+
+  const revVal = document.getElementById("rangeRevenueVal");
+  if (revVal) revVal.innerText = `${Number(data.total_revenue || 0).toLocaleString()} ${curr}`;
+
+  const costVal = document.getElementById("rangeOilCost");
+  if (costVal) costVal.innerText = `Oil Cost: ${Number(data.total_oil_cost || 0).toLocaleString()} ${curr}`;
+
+  const sCount = document.getElementById("rangeServicesCount");
+  if (sCount) sCount.innerText = `${data.services_count || 0} Cars`;
+
+  const fCount = document.getElementById("rangeFirstServices");
+  if (fCount) fCount.innerText = `${data.first_changes || 0} First Changes`;
+
+  const lVal = document.getElementById("rangeLitersVal");
+  if (lVal) lVal.innerText = `${data.total_liters || 0} L`;
+
+  const mPct = document.getElementById("rangeProfitMargin");
+  if (mPct) mPct.innerText = `${data.margin_pct || 0}% Net Margin`;
+
+  const badge = document.getElementById("rangeRecordCountBadge");
+  if (badge) badge.innerText = `${data.services_count || 0} records`;
+
+  const tbody = document.getElementById("rangeTransactionsTableBody");
+  if (tbody) {
+    const txs = data.transactions || [];
+    if (txs.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:18px; color:var(--text-muted);">No services recorded between ${escapeHtml(startStr)} and ${escapeHtml(endStr)}.</td></tr>`;
+    } else {
+      tbody.innerHTML = txs.map(t => `
+        <tr>
+          <td><strong>${escapeHtml(t.date)}</strong></td>
+          <td><span class="plate-badge">${escapeHtml(t.plate)}</span></td>
+          <td>
+            <strong>${escapeHtml(t.customer)}</strong><br>
+            <small style="color:var(--text-muted);">${escapeHtml(t.phone || "")}</small>
+          </td>
+          <td>${escapeHtml(t.oil)}</td>
+          <td><strong>${Number(t.total).toLocaleString()} ${curr}</strong></td>
+          <td>${Number(t.oil_cost).toLocaleString()} ${curr}</td>
+          <td><strong style="color:var(--success); font-size:14px;">+${Number(t.profit).toLocaleString()} ${curr}</strong></td>
+          <td>
+            ${t.is_min_floor ? '<span class="badge badge-accent" title="Guaranteed minimum 300 PKR floor applied"><i class="fa-solid fa-shield-halved"></i> 300 Floor</span>' : '<span class="badge badge-success">Standard</span>'}
+          </td>
+        </tr>
+      `).join("");
+    }
   }
 }
 
@@ -1628,6 +2308,13 @@ function setupNavigation() {
   window.setProfitChartTab = setProfitChartTab;
   window.openEditOilModal = openEditOilModal;
   window.deleteOilItem = deleteOilItem;
+  window.deleteServiceItem = deleteServiceItem;
+  window.deleteCustomerItem = deleteCustomerItem;
+  window.selectProfitPreset = selectProfitPreset;
+  window.applyCustomProfitRange = applyCustomProfitRange;
+  window.executeGlobalSearch = executeGlobalSearch;
+  window.clearGlobalSearch = clearGlobalSearch;
+  window.hideSearchDropdown = hideSearchDropdown;
   window.openMobileDrawer = openMobileDrawer;
   window.closeMobileDrawer = closeMobileDrawer;
 

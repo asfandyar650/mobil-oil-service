@@ -6,7 +6,8 @@
   <title>Mobil Oil Change & Lube Service Manager</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="chart.min.js"></script>
+  <script>if (typeof Chart === "undefined") { document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>'); }</script>
 </head>
 <body>
 
@@ -111,8 +112,15 @@
       </div>
 
       <div class="search-box">
-        <i class="fa-solid fa-magnifying-glass search-icon"></i>
-        <input type="text" id="globalSearchInput" placeholder="Search customer, phone, or plate (e.g. LEA-2489)...">
+        <i class="fa-solid fa-magnifying-glass search-icon" id="searchIconBtn" title="Click to Search"></i>
+        <input type="text" id="globalSearchInput" placeholder="Search customer, phone, or plate (e.g. LEA-2489)..." autocomplete="off">
+        <button class="search-clear-btn" id="btnClearSearch" type="button" title="Clear Search" style="display:none;">&times;</button>
+        <button class="btn btn-primary search-submit-btn" id="btnGlobalSearch" type="button" title="Search Database">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <span>Search</span>
+        </button>
+        <!-- Instant Search Dropdown Results -->
+        <div class="search-results-dropdown" id="searchResultsDropdown" style="display: none;"></div>
       </div>
 
       <div class="topbar-actions">
@@ -314,6 +322,122 @@
             </div>
           </div>
           <span class="badge badge-success" style="font-size:12px;">ACTIVE POLICY</span>
+        </div>
+
+        <!-- Calendar & Flexible Date Range Profit Explorer -->
+        <div class="card" style="margin-bottom: 24px;">
+          <div class="card-header" style="flex-wrap: wrap; gap: 12px; align-items: center;">
+            <div>
+              <h3 class="card-title"><i class="fa-solid fa-calendar-days" style="color:var(--primary); margin-right:8px;"></i>Calendar Profit & Revenue Explorer</h3>
+              <p style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Inspect profit, client expense, and oil costs for past 2 days, x days, or any custom calendar dates</p>
+            </div>
+            <!-- Quick Preset Range Buttons -->
+            <div class="date-preset-group">
+              <button class="btn btn-secondary btn-sm date-preset-btn" onclick="selectProfitPreset('today')" id="presetToday">Today</button>
+              <button class="btn btn-secondary btn-sm date-preset-btn active" onclick="selectProfitPreset('2days')" id="preset2Days">Past 2 Days</button>
+              <button class="btn btn-secondary btn-sm date-preset-btn" onclick="selectProfitPreset('7days')" id="preset7Days">Past 7 Days</button>
+              <button class="btn btn-secondary btn-sm date-preset-btn" onclick="selectProfitPreset('30days')" id="preset30Days">Past 30 Days</button>
+              <button class="btn btn-secondary btn-sm date-preset-btn" onclick="selectProfitPreset('month')" id="presetMonth">This Month</button>
+              <button class="btn btn-secondary btn-sm date-preset-btn" onclick="selectProfitPreset('year')" id="presetYear">This Year</button>
+              <button class="btn btn-secondary btn-sm date-preset-btn" onclick="selectProfitPreset('all')" id="presetAll">All Time</button>
+            </div>
+          </div>
+          <div style="padding: 20px;">
+            <!-- Calendar Date Picker Inputs -->
+            <div class="calendar-filter-bar">
+              <div class="date-input-group">
+                <label for="profitCustomStart"><i class="fa-solid fa-calendar"></i> From Date:</label>
+                <input type="date" id="profitCustomStart" class="form-control" style="height:38px; width:auto; min-width:160px;">
+              </div>
+              <div class="date-input-group">
+                <label for="profitCustomEnd"><i class="fa-solid fa-calendar"></i> To Date:</label>
+                <input type="date" id="profitCustomEnd" class="form-control" style="height:38px; width:auto; min-width:160px;">
+              </div>
+              <button class="btn btn-primary btn-sm" id="btnApplyProfitDateRange" onclick="applyCustomProfitRange()" style="height:38px; padding:0 18px;">
+                <i class="fa-solid fa-calculator"></i>
+                <span>Calculate Profit</span>
+              </button>
+              <button class="btn btn-secondary btn-sm" onclick="selectProfitPreset('2days')" style="height:38px;" title="Reset to Past 2 Days">
+                <i class="fa-solid fa-rotate-left"></i> Reset
+              </button>
+            </div>
+
+            <!-- Dynamic KPI Cards for Selected Date Range -->
+            <div class="metrics-grid" style="margin-top: 18px; margin-bottom: 12px;">
+              <div class="metric-card green" style="padding: 16px;">
+                <div class="metric-info">
+                  <p id="rangePeriodLabel">Past 2 Days Net Profit</p>
+                  <h3 id="rangeProfitVal">0 PKR</h3>
+                  <span id="rangeAvgProfit">Avg: 0 PKR / car</span>
+                </div>
+                <div class="metric-icon-wrap">
+                  <i class="fa-solid fa-sack-dollar"></i>
+                </div>
+              </div>
+
+              <div class="metric-card blue" style="padding: 16px;">
+                <div class="metric-info">
+                  <p>Client Expense (Total Revenue)</p>
+                  <h3 id="rangeRevenueVal">0 PKR</h3>
+                  <span id="rangeOilCost">Oil Cost: 0 PKR</span>
+                </div>
+                <div class="metric-icon-wrap">
+                  <i class="fa-solid fa-receipt"></i>
+                </div>
+              </div>
+
+              <div class="metric-card amber" style="padding: 16px;">
+                <div class="metric-info">
+                  <p>Vehicles Serviced</p>
+                  <h3 id="rangeServicesCount">0 Cars</h3>
+                  <span id="rangeFirstServices">0 First Changes</span>
+                </div>
+                <div class="metric-icon-wrap">
+                  <i class="fa-solid fa-car-side"></i>
+                </div>
+              </div>
+
+              <div class="metric-card red" style="padding: 16px;">
+                <div class="metric-info">
+                  <p>Oil Dispensed</p>
+                  <h3 id="rangeLitersVal">0 L</h3>
+                  <span id="rangeProfitMargin">0% Net Margin</span>
+                </div>
+                <div class="metric-icon-wrap">
+                  <i class="fa-solid fa-gas-pump"></i>
+                </div>
+              </div>
+            </div>
+
+            <!-- Detailed Transactions Breakdown for the Selected Dates -->
+            <div style="margin-top: 16px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <h4 style="font-size: 13.5px; font-weight: 700; color: var(--text-main); margin:0;">
+                  <i class="fa-solid fa-list-check" style="color:var(--primary); margin-right:6px;"></i>Services in Selected Range
+                </h4>
+                <span id="rangeRecordCountBadge" class="badge badge-accent">0 records</span>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Plate</th>
+                      <th>Customer</th>
+                      <th>Oil Product</th>
+                      <th>Client Total</th>
+                      <th>Oil Cost</th>
+                      <th>Net Profit</th>
+                      <th>Guaranteed Floor</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rangeTransactionsTableBody">
+                    <tr><td colspan="8" style="text-align:center; padding:18px; color:var(--text-muted);">Select dates to view service transactions.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Profit Trend Interactive Chart -->
@@ -1243,9 +1367,14 @@
             <input type="number" id="editInvAlert" class="form-control" min="1" value="10">
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" onclick="closeModal('modalEditOil')">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save Changes</button>
+        <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+          <button type="button" class="btn btn-secondary" id="btnModalDeleteOil" style="color:var(--danger); border-color:var(--danger); font-weight:700;">
+            <i class="fa-solid fa-trash"></i> Delete Oil
+          </button>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('modalEditOil')">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+          </div>
         </div>
       </form>
     </div>
