@@ -1,0 +1,13 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# macOS system & build artifacts
+.DS_Store
+Mobil Oil Service.app/
+MobilOilService
+AppIcon.iconset/
+
+# OS metadata
+Thumbs.db
