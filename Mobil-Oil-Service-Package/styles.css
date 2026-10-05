@@ -251,25 +251,33 @@ body {
 
 .search-box {
   position: relative;
-  width: 440px;
+  width: 480px;
+  display: flex;
+  align-items: center;
+  gap: 10px; /* Space between search box and search button */
+}
+
+.search-input-wrap {
+  position: relative;
+  flex: 1;
   display: flex;
   align-items: center;
 }
 
-.search-box input {
+.search-input-wrap input {
   width: 100%;
   height: 40px;
   background-color: var(--bg-main);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 0 95px 0 38px;
+  padding: 0 34px 0 38px;
   font-size: 13.5px;
   color: var(--text-main);
   outline: none;
   transition: all 0.15s ease;
 }
 
-.search-box input:focus {
+.search-input-wrap input:focus {
   border-color: var(--border-focus);
   background-color: var(--bg-card);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
@@ -283,11 +291,12 @@ body {
   color: var(--text-muted);
   font-size: 14px;
   z-index: 2;
+  cursor: pointer;
 }
 
 .search-clear-btn {
   position: absolute;
-  right: 88px;
+  right: 10px;
   top: 50%;
   transform: translateY(-50%);
   background: none;
@@ -304,16 +313,24 @@ body {
 }
 
 .search-submit-btn {
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 32px;
-  padding: 0 14px;
-  font-size: 12.5px;
+  position: relative;
+  height: 40px;
+  padding: 0 16px;
+  font-size: 13px;
   font-weight: 600;
-  border-radius: calc(var(--radius-md) - 2px);
-  z-index: 3;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 75, 151, 0.2);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.search-submit-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 75, 151, 0.3);
 }
 
 /* Floating Instant Search Dropdown */
@@ -1092,7 +1109,55 @@ textarea.form-control {
    Responsive Breakpoints: Desktop, Tablet, and Mobile Phones
    ========================================================================== */
 
-/* Tablet & Smaller Screens (<= 1024px) */
+/* Laptops, Desktops & Large Screens (min-width: 601px) - NEVER SHOW DRAWER */
+@media (min-width: 601px) {
+  body {
+    display: flex !important;
+    height: 100vh !important;
+    overflow: hidden !important;
+  }
+
+  .sidebar {
+    position: static !important;
+    transform: none !important;
+    top: auto !important;
+    left: auto !important;
+    bottom: auto !important;
+    width: 250px !important;
+    display: flex !important;
+    flex-shrink: 0 !important;
+    box-shadow: none !important;
+    z-index: 10 !important;
+  }
+
+  .mobile-menu-toggle {
+    display: none !important;
+  }
+
+  .mobile-brand-title {
+    display: none !important;
+  }
+
+  .sidebar-backdrop {
+    display: none !important;
+  }
+
+  .mobile-bottom-nav {
+    display: none !important;
+  }
+
+  .topbar {
+    height: 68px;
+    padding: 0 24px;
+    flex-wrap: nowrap;
+  }
+
+  .topbar-actions .btn-text {
+    display: inline !important;
+  }
+}
+
+/* Medium Laptops & Tablets (601px - 1024px): Responsive Grids while keeping solid sidebar */
 @media (max-width: 1024px) {
   .analytics-charts-grid {
     grid-template-columns: 1fr;
@@ -1103,8 +1168,8 @@ textarea.form-control {
   }
 }
 
-/* Tablet & Mobile Slide-Out Drawer Mode (<= 900px) */
-@media (max-width: 900px) {
+/* Small Handheld Mobile Phones ONLY (<= 600px) */
+@media (max-width: 600px) {
   body {
     overflow: auto;
   }
@@ -1135,22 +1200,18 @@ textarea.form-control {
     display: inline-flex;
   }
 
-  .topbar {
-    padding: 0 16px;
-    height: 60px;
+  .mobile-bottom-nav {
+    display: flex;
   }
 
-  .search-box {
-    width: 280px;
+  .content-body {
+    padding: 14px 12px 82px 12px;
   }
-}
 
-/* Mobile Phones (<= 768px) */
-@media (max-width: 768px) {
   .topbar {
     height: auto;
-    min-height: 58px;
-    padding: 10px 14px;
+    min-height: 56px;
+    padding: 8px 12px;
     flex-wrap: wrap;
     gap: 8px;
   }
@@ -1160,11 +1221,18 @@ textarea.form-control {
     width: 100%;
     max-width: 100%;
     margin-top: 4px;
+    gap: 8px;
   }
 
-  .search-box input {
+  .search-input-wrap input {
     height: 38px;
     font-size: 14px;
+  }
+
+  .search-submit-btn {
+    height: 38px;
+    padding: 0 12px;
+    font-size: 12px;
   }
 
   .topbar-actions {
@@ -1177,7 +1245,7 @@ textarea.form-control {
   }
 
   .topbar-actions .btn {
-    padding: 0 12px;
+    padding: 0 10px;
     height: 36px;
   }
 
@@ -1258,8 +1326,8 @@ textarea.form-control {
   }
 }
 
-/* Narrow Mobile Screens & Touch Optimization (<= 640px) */
-@media (max-width: 640px) {
+/* Narrow Mobile Screens & Touch Optimization (<= 600px) */
+@media (max-width: 600px) {
   .mobile-bottom-nav {
     display: flex;
   }

@@ -112,15 +112,17 @@
       </div>
 
       <div class="search-box">
-        <i class="fa-solid fa-magnifying-glass search-icon" id="searchIconBtn" title="Click to Search"></i>
-        <input type="text" id="globalSearchInput" placeholder="Search customer, phone, or plate (e.g. LEA-2489)..." autocomplete="off">
-        <button class="search-clear-btn" id="btnClearSearch" type="button" title="Clear Search" style="display:none;">&times;</button>
+        <div class="search-input-wrap">
+          <i class="fa-solid fa-magnifying-glass search-icon" id="searchIconBtn" title="Click to Search"></i>
+          <input type="text" id="globalSearchInput" placeholder="Search customer, phone, or plate (e.g. LEA-2489)..." autocomplete="off">
+          <button class="search-clear-btn" id="btnClearSearch" type="button" title="Clear Search" style="display:none;">&times;</button>
+          <!-- Instant Search Dropdown Results -->
+          <div class="search-results-dropdown" id="searchResultsDropdown" style="display: none;"></div>
+        </div>
         <button class="btn btn-primary search-submit-btn" id="btnGlobalSearch" type="button" title="Search Database">
           <i class="fa-solid fa-magnifying-glass"></i>
           <span>Search</span>
         </button>
-        <!-- Instant Search Dropdown Results -->
-        <div class="search-results-dropdown" id="searchResultsDropdown" style="display: none;"></div>
       </div>
 
       <div class="topbar-actions">
